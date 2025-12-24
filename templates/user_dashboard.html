@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Utente - Portale VM ProxMox{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h2>Le Mie Richieste VM</h2>
+    <a href="{{ url_for('request_vm') }}" class="btn btn-primary">➕ Nuova Richiesta</a>
+</div>
+
+{% if requests %}
+    <div class="requests-grid">
+        {% for req in requests %}
+        <div class="request-card status-{{ req.status }}">
+            <div class="request-header">
+                <h3>{{ vm_types[req.vm_type].name }}</h3>
+                <span class="status-badge status-{{ req.status }}">
+                    {% if req.status == 'pending' %}⏳ In Attesa
+                    {% elif req.status == 'approved' %}✅ Approvata
+                    {% elif req.status == 'rejected' %}❌ Rifiutata
+                    {% elif req.status == 'completed' %}✅ Completata
+                    {% endif %}
+                </span>
+            </div>
+            
+            <div class="request-body">
+                <p><strong>Descrizione:</strong> {{ vm_types[req.vm_type].description }}</p>
+                <p><strong>Risorse:</strong> {{ vm_types[req.vm_type].cores }} CPU, {{ vm_types[req.vm_type].memory }}MB RAM, {{ vm_types[req.vm_type].disk }}GB Disk</p>
+                <p><strong>Data richiesta:</strong> {{ req.requested_at.strftime('%d/%m/%Y %H:%M') }}</p>
+                
+                {% if req.status == 'approved' or req.status == 'completed' %}
+                    <p><strong>VM ID:</strong> {{ req.vm_id }}</p>
+                    <p><strong>Nome VM:</strong> {{ req.vm_name }}</p>
+                  
+                {% endif %}
+            </div>
+            
+            <div class="request-footer">
+                {% if req.status == 'approved' or req.status == 'completed' %}
+                    <a href="{{ url_for('vm_details', request_id=req.id) }}" class="btn btn-secondary">Vedi Dettagli</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <p>Non hai ancora fatto nessuna richiesta.</p>
+        <a href="{{ url_for('request_vm') }}" class="btn btn-primary">Crea la tua prima richiesta</a>
+    </div>
+{% endif %}
+{% endblock %}
+

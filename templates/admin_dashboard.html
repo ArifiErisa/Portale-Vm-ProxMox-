@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Admin - Portale VM ProxMox{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h2>Gestione Richieste VM</h2>
+    <p class="subtitle">Approve o rifiuta le richieste degli utenti</p>
+</div>
+
+{% if requests %}
+    <div class="admin-requests-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Utente</th>
+                    <th>Tipo VM</th>
+                    <th>Data Richiesta</th>
+                    <th>Stato</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr class="status-{{ req.status }}">
+                    <td>{{ req.id }}</td>
+                    <td>{{ req.user.username }}</td>
+                    <td>
+                        <span class="vm-type-badge">{{ vm_types[req.vm_type].name }}</span>
+                    </td>
+                    <td>{{ req.requested_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>
+                        <span class="status-badge status-{{ req.status }}">
+                            {% if req.status == 'pending' %}⏳ In Attesa
+                            {% elif req.status == 'approved' %}✅ Approvata
+                            {% elif req.status == 'rejected' %}❌ Rifiutata
+                            {% elif req.status == 'completed' %}✅ Completata
+                            {% elif req.status == 'deleted' %}🗑️ Eliminata
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if req.status == 'pending' %}
+                            <button onclick="approveRequest({{ req.id }})" class="btn btn-success btn-sm">✅ Approva</button>
+                            <button onclick="rejectRequest({{ req.id }})" class="btn btn-danger btn-sm">❌ Rifiuta</button>
+                        {% elif req.status == 'approved' or req.status == 'completed' %}
+                            <span class="info-text">VM ID: {{ req.vm_id }}</span>
+                            <button onclick="deleteRequest({{ req.id }})" class="btn btn-warning btn-sm" style="margin-left:8px">🗑️ Elimina</button>
+                        {% elif req.status == 'deleted' %}
+                            <span class="info-text">VM rimossa</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="empty-state">
+        <p>Nessuna richiesta presente.</p>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function approveRequest(requestId) {
+    if (!confirm('Sei sicuro di voler approvare questa richiesta? La macchina verrà creata immediatamente.')) {
+        return;
+    }
+    
+    
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '⏳ Creazione in corso...';
+    
+    fetch(`/admin/approve/${requestId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin' 
+    })
+    .then(response => {
+        // Controlla se la risposta è JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return response.json();
+        } else {
+            // Se non è JSON, potrebbe essere un errore HTTP
+            throw new Error(`Errore HTTP ${response.status}: ${response.statusText}`);
+        }
+    })
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+        
+        if (data.success) {
+            alert('✅ Richiesta approvata! La macchina è stata creata.');
+            location.reload();
+        } else {
+            alert('❌ Errore: ' + data.message);
+            console.error('Errore approvazione:', data);
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('❌ Errore durante l\'approvazione: ' + error.message);
+        console.error('Errore fetch:', error);
+    });
+}
+
+function rejectRequest(requestId) {
+    if (!confirm('Sei sicuro di voler rifiutare questa richiesta?')) {
+        return;
+    }
+    
+    fetch(`/admin/reject/${requestId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Richiesta rifiutata.');
+            location.reload();
+        } else {
+            alert('Errore: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Errore durante il rifiuto: ' + error);
+    });
+}
+
+function deleteRequest(requestId) {
+    if (!confirm('Sei sicuro di voler eliminare la macchina associata a questa richiesta? Questa operazione è irreversibile.')) {
+        return;
+    }
+
+    fetch(`/admin/delete/${requestId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('VM eliminata con successo.');
+            location.reload();
+        } else {
+            alert('Errore: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Errore durante l\'eliminazione: ' + error);
+    });
+}
+</script>
+{% endblock %}
+

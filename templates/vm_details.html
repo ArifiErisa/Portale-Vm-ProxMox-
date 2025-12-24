@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Dettagli VM - Portale VM ProxMox{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Dettagli Macchina Virtuale</h2>
+    <a href="{{ url_for('user_dashboard') }}" class="btn btn-secondary">&larr; Torna alle Richieste</a>
+</div>
+
+<div class="vm-details-card">
+    <div class="details-section">
+        <h3>Informazioni Generali</h3>
+        <div class="details-grid">
+            <div class="detail-item">
+                <label>Stato:</label>
+                <span class="status-badge status-{{ request.status }}">
+                    {% if request.status == 'approved' %}✅ Approvata
+                    {% elif request.status == 'completed' %}✅ Completata
+                    {% endif %}
+                </span>
+            </div>
+            <div class="detail-item">
+                <label>VM ID:</label>
+                <span>{{ request.vm_id }}</span>
+            </div>
+            <div class="detail-item">
+                <label>Nome VM:</label>
+                <span>{{ request.vm_name }}</span>
+            </div>
+            <div class="detail-item">
+                <label>Hostname:</label>
+                <span>{{ request.vm_hostname }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="details-section">
+        <h3>Credenziali di Accesso</h3>
+        <div class="credentials-box">
+            <div class="credential-item">
+                <label>Username:</label>
+                <code class="credential-value" id="username">{{ request.vm_username }}</code>
+                <button onclick="copyToClipboard('username')" class="btn-copy">📋 Copia</button>
+            </div>
+            
+            <div class="credential-item">
+                <label>Password:</label>
+                <code class="credential-value" id="password">{{ request.vm_password }}</code>
+                <button onclick="copyToClipboard('password')" class="btn-copy">📋 Copia</button>
+            </div>
+            
+           
+            
+            {% if request.vm_id and (session.user_id == request.user_id or session.is_admin) %}
+            <div class="credential-item">
+                <label>Azioni VM:</label>
+                <button id="startBtn" onclick="startVM({{ request.id }})" class="btn btn-primary">🔌 Accendi</button>
+                <button id="stopBtn" onclick="stopVM({{ request.id }})" class="btn btn-secondary" style="margin-left:8px;">⛔ Spegni</button>
+                <span id="powerState" style="margin-left:12px;font-weight:600;color:#333;"></span>
+                <span id="startStatus" style="margin-left:10px;color:#333;"></span>
+            </div>
+            {% endif %}
+
+            {% if session.is_admin and request.vm_ssh_key %}
+            <div class="credential-item">
+                <label>Chiave SSH (visibile solo ad admin):</label>
+                <textarea class="credential-value" id="sshkey" readonly>{{ request.vm_ssh_key }}</textarea>
+                <button onclick="copyToClipboard('sshkey')" class="btn-copy">📋 Copia</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="details-section">
+        <h3>Istruzioni di Accesso</h3>
+        <div class="instructions-box">
+            <h4>Accesso SSH:</h4>
+            <code class="command-example">
+                ssh {{ request.vm_username }}@&lt;indirizzo-ip&gt;
+            </code>
+         
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    const text = element.value || element.textContent;
+    
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Copiato negli appunti!');
+    }).catch(err => {
+        
+        element.select();
+        document.execCommand('copy');
+        alert('Copiato negli appunti!');
+    });
+}
+
+function startVM(requestId) {
+    const btn = document.getElementById('startBtn');
+    const power = document.getElementById('powerState');
+    const status = document.getElementById('startStatus');
+    if (btn) { btn.disabled = true; var originalText = btn.textContent; btn.textContent = '⏳ Avvio in corso...'; }
+
+    // Mostra messaggio unico di avvio
+    if (power) { power.style.color = '#e68a00'; power.textContent = 'Accensione della VM in corso...'; }
+    if (status) { status.textContent = ''; }
+
+    fetch(`/user/start-vm/${requestId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+        if (!data.success) {
+            if (status) { status.style.color = 'red'; status.textContent = 'Errore: ' + (data.message || ''); }
+            return;
+        }
+
+     
+        if (!window.__vm_poll_interval) {
+            window.__vm_poll_interval = setInterval(function() {
+                fetch(`/user/vm-power-status/${requestId}`, { method: 'GET', credentials: 'same-origin' })
+                .then(r => r.json()).then(d => {
+                    if (!d) return;
+                 
+
+                    // Aggiorna solo l'indicatore di alimentazione quando lo stato è noto
+                    if (d.status) {
+                        if (d.status === 'running') { if (power) { power.style.color = 'green'; power.textContent = 'Accesa'; } if (status) status.textContent = ''; }
+                        else if (d.status === 'stopped') { if (power) { power.style.color = '#b00'; power.textContent = 'Spenta'; } if (status) status.textContent = ''; }
+                    }
+                }).catch(()=>{});
+            }, 3000);
+        }
+    })
+    .catch(err => {
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+        if (status) { status.style.color = 'red'; status.textContent = 'Errore durante la richiesta.'; }
+        console.error(err);
+    });
+}
+
+function stopVM(requestId) {
+    const stopBtn = document.getElementById('stopBtn');
+    const power = document.getElementById('powerState');
+    const status = document.getElementById('startStatus');
+    if (stopBtn) { stopBtn.disabled = true; var originalText = stopBtn.textContent; stopBtn.textContent = '⏳ Spegnimento...'; }
+    if (status) { status.style.color = '#333'; status.textContent = 'Spegimento in corso...'; }
+
+    fetch(`/user/stop-vm/${requestId}`, { method: 'POST', credentials: 'same-origin' })
+    .then(resp => resp.json())
+    .then(data => {
+        
+        const maxAttempts = 40;
+        let attempts = 0;
+        const interval = setInterval(() => {
+            attempts++;
+            fetch(`/user/vm-power-status/${requestId}`, { method: 'GET', credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(d => {
+                if (!d || !d.success) return;
+                if (d.status === 'stopped') {
+                    if (power) { power.style.color = '#b00'; power.textContent = 'Spenta'; }
+                    if (status) { status.style.color = '#b00'; status.textContent = 'VM spenta'; }
+                    clearInterval(interval);
+                    if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = originalText; }
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    if (status) { status.style.color = 'red'; status.textContent = 'Timeout: stato non cambiato'; }
+                    if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = originalText; }
+                } else {
+                    if (power) { power.style.color = '#333'; power.textContent = 'Spegnimento...'; }
+                }
+            }).catch(()=>{});
+        }, 3000);
+    })
+    .catch(err => {
+        if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = originalText; }
+        if (status) { status.style.color = 'red'; status.textContent = 'Errore durante la richiesta.'; }
+        console.error(err);
+    });
+}
+
+function refreshPowerStatus(requestId) {
+    const power = document.getElementById('powerState');
+    fetch(`/user/vm-power-status/${requestId}`, {
+        method: 'GET',
+        credentials: 'same-origin'
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (!data.success) return;
+        const st = data.status;
+        if (power) {
+            if (st === 'running') { power.style.color = 'green'; power.textContent = 'Accesa'; }
+            else if (st === 'stopped') { power.style.color = '#b00'; power.textContent = 'Spenta'; }
+            else { power.style.color = '#333'; power.textContent = st || 'Sconosciuto'; }
+        }
+
+        
+    })
+    .catch(err => console.error(err));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    {% if request.vm_id and (session.user_id == request.user_id or session.is_admin) %}
+    // Richiama lo stato corrente della VM all'apertura della pagina
+    const vmRequestId = {{ request.id | tojson }};
+    try {
+        refreshPowerStatus(vmRequestId);
+    } catch (e) {
+      
+    }
+    {% endif %}
+});
+</script>
+{% endblock %}
+

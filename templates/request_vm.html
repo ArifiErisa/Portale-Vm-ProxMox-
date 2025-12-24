@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Richiedi VM - Portale VM ProxMox{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Richiedi una Nuova Macchina Virtuale</h2>
+    <p>Scegli il tipo di macchina virtuale che desideri</p>
+</div>
+
+<form method="POST" action="{{ url_for('request_vm') }}" class="vm-selection-form">
+    <div class="vm-types-grid">
+        {% for type_key, type_info in vm_types.items() %}
+        <div class="vm-type-card">
+            <input type="radio" id="vm_type_{{ type_key }}" name="vm_type" value="{{ type_key }}" required>
+            <label for="vm_type_{{ type_key }}">
+                <div class="vm-type-header">
+                    <h3>{{ type_info.name }}</h3>
+                    <span class="vm-type-badge">{{ type_key }}</span>
+                </div>
+                <p class="vm-type-description">{{ type_info.description }}</p>
+                <div class="vm-type-specs">
+                    <div class="spec-item">
+                        <span class="spec-icon">⚙️</span>
+                        <span>{{ type_info.cores }} CPU</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-icon">💾</span>
+                        <span>{{ type_info.memory }}MB RAM</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-icon">💿</span>
+                        <span>{{ type_info.disk }}GB Disk</span>
+                    </div>
+                </div>
+            </label>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="form-actions">
+        <a href="{{ url_for('user_dashboard') }}" class="btn btn-secondary">Annulla</a>
+        <button type="submit" class="btn btn-primary">Invia Richiesta</button>
+    </div>
+</form>
+{% endblock %}
+
